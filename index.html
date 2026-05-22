@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#155e75" />
+    <title>家庭投資儀表板</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css?v=20260522-5" />
+  </head>
+  <body>
+    <script>
+      if (window.location.protocol === "file:") {
+        window.location.replace("http://127.0.0.1:5173/");
+      }
+    </script>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主要導覽">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">家</div>
+          <div>
+            <strong>家庭投資</strong>
+            <span>總覽與紀錄</span>
+          </div>
+        </div>
+        <nav class="nav-list">
+          <button class="nav-item active" type="button" data-view="dashboard">總覽</button>
+          <button class="nav-item" type="button" data-view="holdings">持股</button>
+          <button class="nav-item" type="button" data-view="transactions">交易</button>
+          <button class="nav-item" type="button" data-view="income">配息</button>
+          <button class="nav-item" type="button" data-view="settings">設定</button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">最新收盤價 · <span id="price-date-label">--</span></p>
+            <h1 id="page-title">家庭總覽</h1>
+          </div>
+          <div class="topbar-actions">
+            <span class="connection-pill" id="connection-status">本機模式</span>
+            <button class="secondary-button" type="button" id="export-button">匯出 JSON</button>
+            <button class="primary-button" type="button" id="open-entry">新增紀錄</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboard-view" aria-labelledby="page-title">
+          <div class="metric-strip" id="summary-metrics"></div>
+          <div class="content-grid">
+            <section class="panel wide">
+              <div class="section-heading">
+                <h2>資產走勢</h2>
+                <span class="status-pill estimated">示範資料</span>
+              </div>
+              <div class="trend-chart" id="trend-chart" aria-label="資產走勢圖"></div>
+            </section>
+            <section class="panel">
+              <div class="section-heading">
+                <h2>市場配置</h2>
+              </div>
+              <div class="allocation" id="market-allocation"></div>
+            </section>
+            <section class="panel">
+              <div class="section-heading">
+                <h2>資料狀態</h2>
+              </div>
+              <div class="status-list" id="data-status"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="holdings-view" aria-labelledby="page-title">
+          <div class="section-heading page-section">
+            <h2>目前持股</h2>
+            <span class="muted" id="holding-count"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>標的</th>
+                  <th>市場</th>
+                  <th>股數</th>
+                  <th>平均成本</th>
+                  <th>最新收盤價</th>
+                  <th>市值</th>
+                  <th>未實現損益</th>
+                  <th>狀態</th>
+                </tr>
+              </thead>
+              <tbody id="holdings-table"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="transactions-view" aria-labelledby="page-title">
+          <div class="section-heading page-section">
+            <h2>交易紀錄</h2>
+            <span class="muted">買入、賣出與費用</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>類型</th>
+                  <th>帳戶</th>
+                  <th>標的</th>
+                  <th>股數</th>
+                  <th>成交價</th>
+                  <th>費用</th>
+                  <th>台幣金額</th>
+                  <th class="actions-column">操作</th>
+                </tr>
+              </thead>
+              <tbody id="transactions-table"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="income-view" aria-labelledby="page-title">
+          <div class="section-heading page-section">
+            <h2>配息 / 配發</h2>
+            <span class="muted">現金入帳與再投入</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>入帳日</th>
+                  <th>標的</th>
+                  <th>類型</th>
+                  <th>毛配息</th>
+                  <th>預扣稅</th>
+                  <th>淨入帳</th>
+                  <th>台幣估算</th>
+                  <th class="actions-column">操作</th>
+                </tr>
+              </thead>
+              <tbody id="income-table"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="settings-view" aria-labelledby="page-title">
+          <div class="settings-grid">
+            <section class="panel">
+              <div class="section-heading">
+                <h2>基本設定</h2>
+              </div>
+              <dl class="settings-list">
+                <div>
+                  <dt>基本幣別</dt>
+                  <dd>新台幣 TWD</dd>
+                </div>
+                <div>
+                  <dt>匯率來源</dt>
+                  <dd>富邦銀行匯率</dd>
+                </div>
+                <div>
+                  <dt>價格口徑</dt>
+                  <dd>最新可得收盤價，標示資料日期</dd>
+                </div>
+                <div>
+                  <dt>備份</dt>
+                  <dd>目前手動匯出，正式版接 Google Drive</dd>
+                </div>
+              </dl>
+            </section>
+            <section class="panel">
+              <div class="section-heading">
+                <h2>費率規則</h2>
+              </div>
+              <form class="fee-form" id="fee-form">
+                <label>
+                  台股手續費率
+                  <input name="twCommissionRate" type="number" step="0.000001" min="0" />
+                </label>
+                <label>
+                  台股折扣
+                  <input name="twCommissionDiscount" type="number" step="0.01" min="0" />
+                </label>
+                <label>
+                  台股最低手續費
+                  <input name="twMinimumCommission" type="number" step="1" min="0" />
+                </label>
+                <label>
+                  美股複委託買進費率
+                  <input name="usBuyCommissionRate" type="number" step="0.000001" min="0" />
+                </label>
+                <button class="secondary-button" type="submit">儲存設定</button>
+              </form>
+            </section>
+            <section class="panel">
+              <div class="section-heading">
+                <h2>Supabase 連線</h2>
+                <span class="status-pill estimated" id="supabase-mode">尚未設定</span>
+              </div>
+              <form class="auth-form" id="auth-form">
+                <div class="signed-in-summary" id="signed-in-summary" hidden>
+                  <span>目前登入</span>
+                  <strong id="signed-in-email">--</strong>
+                </div>
+                <label data-auth-signed-out>
+                  Email
+                  <input name="email" type="email" placeholder="you@example.com" autocomplete="email" />
+                </label>
+                <label data-auth-needs-password>
+                  密碼
+                  <input name="password" type="password" autocomplete="current-password" />
+                </label>
+                <div class="auth-actions">
+                  <button class="secondary-button" type="button" id="sign-up-button" data-auth-signed-out>註冊</button>
+                  <button class="primary-button" type="button" id="sign-in-button" data-auth-signed-out>登入</button>
+                  <button class="secondary-button" type="button" id="update-password-button" data-auth-password-setup>設定密碼</button>
+                  <button class="secondary-button" type="button" id="reset-password-button" data-auth-signed-out>重設密碼信</button>
+                  <button class="secondary-button" type="button" id="sign-out-button">登出</button>
+                </div>
+              </form>
+              <p class="helper-text" id="auth-message">建立 Supabase 專案後，將設定放入 supabase-config.js。</p>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="entry-dialog" id="entry-dialog">
+      <form method="dialog" class="entry-form" id="entry-form">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">手動輸入</p>
+            <h2 id="entry-dialog-title">新增紀錄</h2>
+          </div>
+          <button class="icon-button" id="close-entry" aria-label="關閉" type="button">×</button>
+        </div>
+
+        <div class="segmented" role="tablist" aria-label="紀錄類型">
+          <button class="segment active" type="button" data-entry-type="buy">買入</button>
+          <button class="segment" type="button" data-entry-type="sell">賣出</button>
+          <button class="segment" type="button" data-entry-type="dividend">配息</button>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            日期
+            <input name="date" type="date" required />
+          </label>
+          <label>
+            帳戶
+            <select name="accountId" required></select>
+          </label>
+          <label data-trade-only>
+            市場
+            <select name="market">
+              <option value="TW">台股</option>
+              <option value="US">美股</option>
+            </select>
+          </label>
+          <label>
+            標的代號
+            <input name="ticker" type="text" required placeholder="例如 0050 或 VOO" />
+          </label>
+          <label data-trade-only>
+            股數
+            <input name="quantity" type="number" step="0.0001" min="0" />
+          </label>
+          <label data-trade-only>
+            成交價
+            <input name="price" type="number" step="0.0001" min="0" />
+          </label>
+          <label data-dividend-only hidden>
+            配息類型
+            <select name="dividendType">
+              <option value="cash">現金入帳</option>
+              <option value="reinvested">再投入</option>
+            </select>
+          </label>
+          <label data-dividend-only hidden>
+            淨入帳金額
+            <input name="netAmount" type="number" step="0.01" min="0" />
+          </label>
+        </div>
+
+        <details class="advanced">
+          <summary>進階欄位</summary>
+          <div class="form-grid">
+            <label>
+              手續費
+              <input name="commission" type="number" step="0.01" min="0" />
+            </label>
+            <label>
+              稅費 / 預扣稅
+              <input name="tax" type="number" step="0.01" min="0" />
+            </label>
+            <label>
+              其他費用
+              <input name="otherFee" type="number" step="0.01" min="0" />
+            </label>
+            <label>
+              實際匯率
+              <input name="fxRate" type="number" step="0.0001" min="0" />
+            </label>
+            <label class="full">
+              備註
+              <textarea name="note" rows="3"></textarea>
+            </label>
+          </div>
+        </details>
+
+        <div class="entry-summary" id="entry-summary"></div>
+
+        <div class="dialog-actions">
+          <button class="secondary-button danger" id="delete-entry" type="button" hidden>刪除此筆</button>
+          <button class="secondary-button" id="cancel-entry" type="button">取消</button>
+          <button class="primary-button" id="save-entry" value="default" type="button">儲存紀錄</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js?v=20260522-7" type="module"></script>
+  </body>
+</html>

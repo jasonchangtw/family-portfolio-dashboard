@@ -1,0 +1,10 @@
+{
+  "name": "family-portfolio-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "sh scripts/build-config.sh",
+    "check": "node --check app.js"
+  }
+}

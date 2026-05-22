@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="家庭投資">
+  <rect width="512" height="512" rx="80" fill="#155e75"/>
+  <path d="M132 248 256 140l124 108v128a28 28 0 0 1-28 28h-64v-96h-64v96h-64a28 28 0 0 1-28-28V248Z" fill="#f7fbfa"/>
+  <path d="M168 292h56l32-48 40 68 24-32h40" fill="none" stroke="#d9f99d" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

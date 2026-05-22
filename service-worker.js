@@ -1,0 +1,64 @@
+const cacheName = "family-portfolio-dashboard-v4";
+const assets = [
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./app.js",
+  "./supabase-config.js",
+  "./manifest.webmanifest",
+  "./icon.svg"
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(assets)));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== cacheName).map((key) => caches.delete(key))))
+  );
+  self.clients.claim();
+});
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  const shouldUseNetworkFirst = [
+    "/",
+    "/index.html",
+    "/app.js",
+    "/styles.css",
+    "/supabase-config.js"
+  ].includes(url.pathname);
+
+  if (shouldUseNetworkFirst) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        const copy = response.clone();
+        caches.open(cacheName).then((cache) => cache.put(event.request, copy));
+        return response;
+      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+      const copy = response.clone();
+      caches.open(cacheName).then((cache) => cache.put(event.request, copy));
+      return response;
+    }).catch(() => caches.match("./index.html")))
+  );
+});
+
+self.addEventListener("sync", (event) => {
+  if (event.tag !== "portfolio-data-sync") return;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window" }).then((clients) => {
+      for (const client of clients) {
+        client.postMessage({ type: "portfolio-data-sync-ready" });
+      }
+    })
+  );
+});

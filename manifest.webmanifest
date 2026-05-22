@@ -1,0 +1,18 @@
+{
+  "name": "家庭投資儀表板",
+  "short_name": "家庭投資",
+  "description": "追蹤家庭台股、美股複委託、ETF、配息與損益。",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f6f8f7",
+  "theme_color": "#155e75",
+  "lang": "zh-Hant",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
