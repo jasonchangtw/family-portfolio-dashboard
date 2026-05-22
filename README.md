@@ -54,6 +54,12 @@ http://localhost:5173
 
 這是純靜態網站。部署時不要把 `service_role` key 放到前端；只需要 Supabase Project URL 與 anon public key。
 
+GitHub repository：
+
+https://github.com/jasonchangtw/family-portfolio-dashboard
+
+完整步驟請見 `DEPLOYMENT.md`。
+
 Vercel / Netlify 可設定：
 
 - Build command：`sh scripts/build-config.sh`
