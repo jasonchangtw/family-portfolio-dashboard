@@ -48,6 +48,10 @@ let supabaseClient = null;
 let supabaseConfig = null;
 let currentUser = null;
 let hasAutoRefreshedPrices = false;
+const pendingCloudWrites = {
+  transactions: new Map(),
+  dividends: new Map()
+};
 let pendingPasswordSetupType = "";
 let cloudContext = {
   householdId: null,
@@ -255,11 +259,13 @@ async function loadCloudData() {
       transactions: cloudTransactions,
       dividends: cloudDividends
     };
+    mergePendingCloudWrites(localStateBeforeCloudLoad);
 
     ensureKnownSecurityMetadata();
     if (!cloudTransactions.length && !cloudDividends.length) {
       await migrateLocalRecordsToCloud(localStateBeforeCloudLoad);
     }
+    await retryPendingCloudWrites();
     saveState();
     cloudContext.syncStatus = "synced";
     cloudContext.lastError = "";
@@ -269,6 +275,58 @@ async function loadCloudData() {
     cloudContext.syncStatus = "error";
     cloudContext.lastError = error.message;
     renderSupabaseStatus();
+  }
+}
+
+function mergePendingCloudWrites(localState = null) {
+  for (const transaction of localState?.transactions || []) {
+    if (transaction._pendingCloudSync && !state.transactions.some((item) => item.id === transaction.id)) state.transactions.unshift(transaction);
+  }
+  for (const dividend of localState?.dividends || []) {
+    if (dividend._pendingCloudSync && !state.dividends.some((item) => item.id === dividend.id)) state.dividends.unshift(dividend);
+  }
+  for (const transaction of pendingCloudWrites.transactions.values()) {
+    if (!state.transactions.some((item) => item.id === transaction.id)) state.transactions.unshift(transaction);
+  }
+  for (const dividend of pendingCloudWrites.dividends.values()) {
+    if (!state.dividends.some((item) => item.id === dividend.id)) state.dividends.unshift(dividend);
+  }
+  state.transactions.sort((a, b) => b.date.localeCompare(a.date));
+  state.dividends.sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+}
+
+function rememberPendingCloudWrite(kind, record) {
+  record._pendingCloudSync = true;
+  if (kind === "transaction") pendingCloudWrites.transactions.set(record.id, structuredClone(record));
+  if (kind === "dividend") pendingCloudWrites.dividends.set(record.id, structuredClone(record));
+}
+
+function forgetPendingCloudWrite(kind, id) {
+  if (kind === "transaction") pendingCloudWrites.transactions.delete(id);
+  if (kind === "dividend") pendingCloudWrites.dividends.delete(id);
+  const collection = kind === "transaction" ? state.transactions : state.dividends;
+  const record = collection.find((item) => item.id === id);
+  if (record) delete record._pendingCloudSync;
+}
+
+async function retryPendingCloudWrites() {
+  for (const transaction of state.transactions.filter((item) => item._pendingCloudSync)) {
+    try {
+      rememberPendingCloudWrite("transaction", transaction);
+      await syncTransactionToCloud(transaction);
+      forgetPendingCloudWrite("transaction", transaction.id);
+    } catch {
+      rememberPendingCloudWrite("transaction", transaction);
+    }
+  }
+  for (const dividend of state.dividends.filter((item) => item._pendingCloudSync)) {
+    try {
+      rememberPendingCloudWrite("dividend", dividend);
+      await syncDividendToCloud(dividend);
+      forgetPendingCloudWrite("dividend", dividend.id);
+    } catch {
+      rememberPendingCloudWrite("dividend", dividend);
+    }
   }
 }
 
@@ -1019,6 +1077,9 @@ async function saveEntry() {
     savedEntry = transaction;
     savedEntryKind = "transaction";
   }
+  if (supabaseClient && currentUser) {
+    rememberPendingCloudWrite(savedEntryKind, savedEntry);
+  }
   saveState();
   if (supabaseClient && currentUser) {
     try {
@@ -1026,6 +1087,8 @@ async function saveEntry() {
       renderSupabaseStatus();
       if (savedEntryKind === "transaction") await syncTransactionToCloud(savedEntry);
       if (savedEntryKind === "dividend") await syncDividendToCloud(savedEntry);
+      forgetPendingCloudWrite(savedEntryKind, savedEntry.id);
+      saveState();
       cloudContext.syncStatus = "synced";
       cloudContext.lastError = "";
     } catch (error) {
