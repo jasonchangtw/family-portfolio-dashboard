@@ -132,16 +132,15 @@ http://localhost:5173
 
 ## 10. 部署到其他電腦與手機使用
 
-部署到 Vercel 或 Netlify 時，設定：
+部署到 GitHub Pages 時，設定 repository secrets：
 
-- Build command：`sh scripts/build-config.sh`
-- Output directory：專案根目錄
-- Environment variables：
-  - `PUBLIC_SUPABASE_URL`
-  - `PUBLIC_SUPABASE_ANON_KEY`
+- `PUBLIC_SUPABASE_URL`
+- `PUBLIC_SUPABASE_ANON_KEY`
+
+收盤價更新由 Supabase Edge Function `latest-prices` 處理。
 
 部署完成後，到 Supabase Dashboard 的 Authentication > URL Configuration：
 
 1. Site URL 改成正式網址。
-2. Redirect URLs 加上正式網址與萬用路徑，例如 `https://your-domain.vercel.app/**`。
+2. Redirect URLs 加上正式網址與萬用路徑，例如 `https://jasonchangtw.github.io/family-portfolio-dashboard/**`。
 3. 若仍要本機測試，也保留 `http://localhost:5173/**` 與 `http://127.0.0.1:5173/**`。

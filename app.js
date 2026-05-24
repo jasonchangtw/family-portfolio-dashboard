@@ -45,6 +45,7 @@ let state = loadState();
 let entryType = "buy";
 let editingEntry = null;
 let supabaseClient = null;
+let supabaseConfig = null;
 let currentUser = null;
 let pendingPasswordSetupType = "";
 let cloudContext = {
@@ -439,9 +440,25 @@ async function syncFeeSettingsToCloud() {
 }
 
 function symbolsForPriceRefresh() {
-  const activeTickers = new Set(calculateHoldings().filter((holding) => holding.quantity > 0).map((holding) => `${holding.ticker}:${holding.market}`));
-  if (activeTickers.size) return Array.from(activeTickers);
-  return state.securities.map((security) => `${security.ticker}:${security.market || "TW"}`);
+  const symbols = new Map();
+  for (const holding of calculateHoldings().filter((item) => item.quantity > 0)) {
+    const security = holding.security || securityFor(holding.ticker);
+    symbols.set(`${holding.ticker}:${holding.market}`, {
+      ticker: holding.ticker,
+      market: holding.market,
+      name: security?.name || holding.ticker,
+      currency: security?.currency || (holding.market === "US" ? "USD" : "TWD"),
+      type: security?.type || "股票"
+    });
+  }
+  if (symbols.size) return Array.from(symbols.values());
+  return state.securities.map((security) => ({
+    ticker: security.ticker,
+    market: security.market || "TW",
+    name: security.name,
+    currency: security.currency,
+    type: security.type
+  }));
 }
 
 function applyPriceUpdates(prices) {
@@ -478,22 +495,35 @@ async function refreshLatestPrices() {
   const originalText = button.textContent;
   const symbols = symbolsForPriceRefresh();
   if (!symbols.length) return;
+  if (!supabaseClient || !currentUser || !supabaseConfig?.url || !supabaseConfig?.anonKey) {
+    document.querySelector("#auth-message").textContent = "請先登入 Supabase，才能更新收盤價。";
+    return;
+  }
 
   button.disabled = true;
   button.textContent = "更新中...";
   try {
-    const response = await fetch(`/api/latest-prices?symbols=${encodeURIComponent(symbols.join(","))}`);
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) throw new Error("登入狀態已失效，請重新登入。");
+
+    const response = await fetch(`${supabaseConfig.url}/functions/v1/latest-prices`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseConfig.anonKey,
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({ symbols })
+    });
     if (!response.ok) throw new Error(`價格 API 回應 ${response.status}`);
     const payload = await response.json();
     const updatedCount = applyPriceUpdates(payload.prices || []);
     const missing = (payload.prices || []).filter((price) => price.status !== "actual");
     saveState();
 
-    if (supabaseClient && currentUser && cloudContext.householdId) {
-      await Promise.all((payload.prices || []).map(syncPriceSnapshotToCloud));
-      cloudContext.syncStatus = "synced";
-      cloudContext.lastError = "";
-    }
+    cloudContext.syncStatus = "synced";
+    cloudContext.lastError = "";
 
     const suffix = missing.length ? `；${missing.length} 個標的尚未支援自動更新` : "";
     const message = updatedCount ? `已更新 ${updatedCount} 個收盤價${suffix}。` : `沒有可更新的收盤價${suffix}。`;
@@ -1195,6 +1225,7 @@ async function initSupabase() {
     return;
   }
   try {
+    supabaseConfig = config;
     const { createClient } = await import(supabaseCdn);
     supabaseClient = createClient(config.url, config.anonKey);
     const authHash = new URLSearchParams(window.location.hash.slice(1));
@@ -1225,6 +1256,17 @@ async function initSupabase() {
 }
 
 async function loadSupabaseConfig() {
+  if (window.location.protocol !== "file:") {
+    try {
+      const response = await fetch("/api/config", { cache: "no-store" });
+      if (response.ok) {
+        const config = await response.json();
+        if (config?.url && config?.anonKey) return config;
+      }
+    } catch {
+      // GitHub Pages is static, so /api/config is optional and only used by legacy hosts.
+    }
+  }
   try {
     const module = await import(`./supabase-config.js?v=${Date.now()}`);
     return module.default || module.SUPABASE_CONFIG;

@@ -6,6 +6,14 @@ if [ -f supabase-config.js ] && [ -z "${VERCEL:-}" ] && [ -z "${NETLIFY:-}" ] &&
   exit 0
 fi
 
+if [ -n "${VERCEL:-}" ]; then
+  cat > supabase-config.js <<EOF
+export default null;
+EOF
+  echo "Supabase config is served by /api/config on Vercel."
+  exit 0
+fi
+
 SUPABASE_PUBLIC_URL="${PUBLIC_SUPABASE_URL:-${SUPABASE_URL:-}}"
 SUPABASE_PUBLIC_ANON_KEY="${PUBLIC_SUPABASE_ANON_KEY:-${SUPABASE_ANON_KEY:-}}"
 

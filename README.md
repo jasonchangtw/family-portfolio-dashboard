@@ -39,13 +39,15 @@ http://localhost:5173
 - `supabase-schema.sql`：Supabase PostgreSQL schema 草案
 - `supabase-bootstrap-template.sql`：建立家庭、成員、預設帳戶的 SQL 模板
 - `supabase-config.example.js`：Supabase 前端設定範例
+- `.github/workflows/pages.yml`：GitHub Pages 發佈流程，會由 GitHub Secrets 產生正式站設定
+- `supabase/functions/latest-prices/`：Supabase Edge Function，負責抓取台股最新收盤價並寫入資料庫
 - `SUPABASE_SETUP.md`：Supabase 帳號、專案、資料庫設定步驟
 - `PRD-family-portfolio-dashboard.md`：產品規格
 - `requirements-notes.md`：需求討論紀錄
 
 ## 下一步
 
-1. 部署到 Vercel 或 Netlify，並設定 `PUBLIC_SUPABASE_URL`、`PUBLIC_SUPABASE_ANON_KEY`。
+1. 部署到 GitHub Pages 時設定 GitHub Secrets：`PUBLIC_SUPABASE_URL`、`PUBLIC_SUPABASE_ANON_KEY`。
 2. 到 Supabase Auth URL 設定加入正式網址。
 3. 根據實際富邦成交明細校正費率。
 4. 接每日收盤價與富邦銀行匯率資料來源。
@@ -60,19 +62,15 @@ https://github.com/jasonchangtw/family-portfolio-dashboard
 
 完整步驟請見 `DEPLOYMENT.md`。
 
-Vercel / Netlify 可設定：
+GitHub Pages 使用 GitHub Actions 發佈，Repository Secrets 需要：
 
-- Build command：`sh scripts/build-config.sh`
-- Output directory：專案根目錄
-- Environment variables：
   - `PUBLIC_SUPABASE_URL`
   - `PUBLIC_SUPABASE_ANON_KEY`
 
 本專案也已內建：
 
-- `package.json`：部署時 `npm run build` 會產生 `supabase-config.js`
-- `vercel.json`：Vercel 部署設定
-- `netlify.toml`：Netlify 部署設定
+- `package.json`：本機檢查與建置用
+- `.github/workflows/pages.yml`：GitHub Pages 發佈設定
 - `.env.example`：環境變數範例
 
 本機若已經有 `supabase-config.js`，`npm run build` 不會覆寫它。若真的要用環境變數重產本機設定，可執行：
@@ -85,4 +83,4 @@ FORCE_BUILD_CONFIG=1 npm run build
 
 1. Authentication > URL Configuration
 2. Site URL 填正式網址
-3. Redirect URLs 加上正式網址與萬用路徑，例如 `https://your-domain.vercel.app/**`
+3. Redirect URLs 加上正式網址與萬用路徑，例如 `https://jasonchangtw.github.io/family-portfolio-dashboard/**`

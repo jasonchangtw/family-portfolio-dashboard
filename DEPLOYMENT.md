@@ -4,40 +4,45 @@ GitHub repository:
 
 https://github.com/jasonchangtw/family-portfolio-dashboard
 
-## 1. 匯入 Vercel
+## 1. GitHub Pages
 
-1. 開啟 https://vercel.com/new
-2. 選擇 `jasonchangtw/family-portfolio-dashboard`
-3. Framework Preset 選 `Other`
-4. Build Command 使用：
-
-```bash
-sh scripts/build-config.sh
-```
-
-5. Output Directory 使用：
+本專案使用 GitHub Actions 發佈到 GitHub Pages。Workflow 位於：
 
 ```text
-.
+.github/workflows/pages.yml
 ```
 
-## 2. 設定 Vercel Environment Variables
-
-請在 Vercel 專案設定加入：
+Repository secrets 需要設定：
 
 ```text
-PUBLIC_SUPABASE_URL=https://luverejlzrijjufkpgnv.supabase.co
+PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
 PUBLIC_SUPABASE_ANON_KEY=貼上 Supabase anon public key
 ```
 
-不要使用 Supabase `service_role` key。
+Workflow 只會發佈前端需要的檔案，並在發佈時產生 `supabase-config.js`。
+
+## 2. Supabase Edge Function
+
+收盤價更新由 Supabase Edge Function 處理：
+
+```text
+supabase/functions/latest-prices
+```
+
+這個 function 會：
+
+- 驗證目前登入使用者
+- 找到使用者所屬家庭
+- 從 TWSE 抓台股 / 台股 ETF 最新收盤價
+- 寫入 `price_snapshots`
+- 回傳更新結果給前端
 
 ## 3. 更新 Supabase Auth URL
 
-部署完成後會得到正式網址，例如：
+GitHub Pages 正式網址預期為：
 
 ```text
-https://family-portfolio-dashboard.vercel.app
+https://jasonchangtw.github.io/family-portfolio-dashboard/
 ```
 
 到 Supabase Dashboard > Authentication > URL Configuration：
@@ -46,7 +51,7 @@ https://family-portfolio-dashboard.vercel.app
 2. Redirect URLs 加上：
 
 ```text
-https://你的正式網址/**
+https://jasonchangtw.github.io/family-portfolio-dashboard/**
 http://localhost:5173/**
 http://127.0.0.1:5173/**
 ```
@@ -56,7 +61,7 @@ http://127.0.0.1:5173/**
 1. 用正式網址開啟網站。
 2. 用 email / 密碼登入。
 3. 到設定頁確認顯示 `已同步 Supabase 資料庫`。
-4. 新增一筆測試交易或配息。
+4. 按「更新收盤價」，確認 2330 / 00878 等台股標的會更新。
 5. 用另一台電腦或手機登入同一個網址，確認看得到同一份資料。
 
 ## 5. 手機加到主畫面

@@ -1,0 +1,4 @@
+project_id = "luverejlzrijjufkpgnv"
+
+[functions.latest-prices]
+verify_jwt = false
