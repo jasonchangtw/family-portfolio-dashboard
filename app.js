@@ -44,6 +44,7 @@ const initialState = {
 let state = loadState();
 let entryType = "buy";
 let editingEntry = null;
+let isSavingEntry = false;
 let supabaseClient = null;
 let supabaseConfig = null;
 let currentUser = null;
@@ -213,7 +214,7 @@ async function loadCloudData() {
       if (feeRule.market === "US") feeSettings.usBuyCommissionRate = numberOrZero(feeRule.commission_rate);
     }
 
-    const cloudTransactions = (transactionsResult.data || []).map((transaction) => ({
+    const cloudTransactions = dedupeRecords((transactionsResult.data || []).map((transaction) => ({
       id: transaction.id,
       date: transaction.trade_date,
       type: transaction.kind,
@@ -229,7 +230,7 @@ async function loadCloudData() {
       actualTwdAmount: numberOrZero(transaction.actual_twd_amount),
       status: transaction.value_status,
       note: transaction.note || ""
-    }));
+    })), transactionFingerprint);
 
     const cloudDividends = (dividendsResult.data || []).map((dividend) => ({
       id: dividend.id,
@@ -280,19 +281,69 @@ async function loadCloudData() {
 
 function mergePendingCloudWrites(localState = null) {
   for (const transaction of localState?.transactions || []) {
-    if (transaction._pendingCloudSync && !state.transactions.some((item) => item.id === transaction.id)) state.transactions.unshift(transaction);
+    if (transaction._pendingCloudSync && !hasRecord(state.transactions, transaction, transactionFingerprint)) state.transactions.unshift(transaction);
   }
   for (const dividend of localState?.dividends || []) {
-    if (dividend._pendingCloudSync && !state.dividends.some((item) => item.id === dividend.id)) state.dividends.unshift(dividend);
+    if (dividend._pendingCloudSync && !hasRecord(state.dividends, dividend, dividendFingerprint)) state.dividends.unshift(dividend);
   }
   for (const transaction of pendingCloudWrites.transactions.values()) {
-    if (!state.transactions.some((item) => item.id === transaction.id)) state.transactions.unshift(transaction);
+    if (!hasRecord(state.transactions, transaction, transactionFingerprint)) state.transactions.unshift(transaction);
   }
   for (const dividend of pendingCloudWrites.dividends.values()) {
-    if (!state.dividends.some((item) => item.id === dividend.id)) state.dividends.unshift(dividend);
+    if (!hasRecord(state.dividends, dividend, dividendFingerprint)) state.dividends.unshift(dividend);
   }
+  state.transactions = dedupeRecords(state.transactions, transactionFingerprint);
+  state.dividends = dedupeRecords(state.dividends, dividendFingerprint);
   state.transactions.sort((a, b) => b.date.localeCompare(a.date));
   state.dividends.sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+}
+
+function hasRecord(collection, record, fingerprint) {
+  return collection.some((item) => item.id === record.id || fingerprint(item) === fingerprint(record));
+}
+
+function dedupeRecords(records, fingerprint) {
+  const seen = new Set();
+  return records.filter((record) => {
+    const key = fingerprint(record);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function transactionFingerprint(transaction) {
+  return [
+    transaction.date,
+    transaction.type,
+    transaction.accountId,
+    transaction.ticker,
+    transaction.market,
+    Number(transaction.quantity || 0),
+    Number(transaction.price || 0),
+    Number(transaction.commission || 0),
+    Number(transaction.tax || 0),
+    Number(transaction.otherFee || 0),
+    Number(transaction.fxRate || 0),
+    Number(transaction.actualTwdAmount || 0),
+    transaction.note || ""
+  ].join("|");
+}
+
+function dividendFingerprint(dividend) {
+  return [
+    dividend.paymentDate,
+    dividend.accountId,
+    dividend.ticker,
+    dividend.type,
+    Number(dividend.grossAmount || 0),
+    Number(dividend.withholdingTax || 0),
+    Number(dividend.otherDeductions || 0),
+    Number(dividend.netAmount || 0),
+    dividend.currency || "",
+    Number(dividend.fxRate || 0),
+    dividend.note || ""
+  ].join("|");
 }
 
 function rememberPendingCloudWrite(kind, record) {
@@ -737,6 +788,8 @@ function calculateSummary() {
 }
 
 function render() {
+  state.transactions = dedupeRecords(state.transactions, transactionFingerprint);
+  state.dividends = dedupeRecords(state.dividends, dividendFingerprint);
   renderSummary();
   renderTrend();
   renderAllocation();
@@ -937,10 +990,13 @@ function renderSupabaseStatus() {
   setAuthControls({ isSignedIn: false });
 }
 
-function renderEntryOptions() {
+function renderEntryOptions({ resetDate = false } = {}) {
   const accountSelect = document.querySelector("[name='accountId']");
+  const selectedAccount = accountSelect.value;
   accountSelect.innerHTML = state.accounts.map((account) => `<option value="${account.id}">${account.name}</option>`).join("");
-  document.querySelector("[name='date']").valueAsDate = new Date();
+  if (selectedAccount && state.accounts.some((account) => account.id === selectedAccount)) accountSelect.value = selectedAccount;
+  const dateInput = document.querySelector("[name='date']");
+  if (resetDate || !dateInput.value) dateInput.valueAsDate = new Date();
   updateEntrySummary();
 }
 
@@ -996,9 +1052,16 @@ function updateEntryDialogState() {
 }
 
 async function saveEntry() {
+  if (isSavingEntry) return;
+  isSavingEntry = true;
+  document.querySelector("#save-entry").disabled = true;
   const data = readEntryForm();
   const ticker = data.ticker.trim().toUpperCase();
-  if (!ticker || !data.date || !data.accountId) return;
+  if (!ticker || !data.date || !data.accountId) {
+    isSavingEntry = false;
+    document.querySelector("#save-entry").disabled = false;
+    return;
+  }
   const security = securityFor(ticker);
   let savedEntry = null;
   let savedEntryKind = "";
@@ -1072,7 +1135,9 @@ async function saveEntry() {
     if (editingEntry?.kind === "transaction") {
       state.transactions = state.transactions.map((item) => item.id === editingEntry.id ? transaction : item);
     } else {
-      state.transactions.unshift(transaction);
+      const existingDuplicate = state.transactions.find((item) => transactionFingerprint(item) === transactionFingerprint(transaction));
+      if (existingDuplicate) transaction.id = existingDuplicate.id;
+      else state.transactions.unshift(transaction);
     }
     savedEntry = transaction;
     savedEntryKind = "transaction";
@@ -1101,6 +1166,8 @@ async function saveEntry() {
   editingEntry = null;
   updateEntryDialogState();
   render();
+  isSavingEntry = false;
+  document.querySelector("#save-entry").disabled = false;
 }
 
 function exportJson() {
@@ -1123,7 +1190,8 @@ function closeEntryDialog() {
 
 function openNewEntryDialog() {
   editingEntry = null;
-  renderEntryOptions();
+  document.querySelector("#entry-form").reset();
+  renderEntryOptions({ resetDate: true });
   updateEntryMode("buy");
   updateEntryDialogState();
   document.querySelector("#entry-dialog").showModal();
