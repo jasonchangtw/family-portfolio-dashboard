@@ -45,7 +45,7 @@ http://localhost:5173
 
 ## 下一步
 
-1. 部署到 Vercel 或 Netlify，並設定 `SUPABASE_URL`、`SUPABASE_ANON_KEY`。
+1. 部署到 Vercel 或 Netlify，並設定 `PUBLIC_SUPABASE_URL`、`PUBLIC_SUPABASE_ANON_KEY`。
 2. 到 Supabase Auth URL 設定加入正式網址。
 3. 根據實際富邦成交明細校正費率。
 4. 接每日收盤價與富邦銀行匯率資料來源。
@@ -65,8 +65,8 @@ Vercel / Netlify 可設定：
 - Build command：`sh scripts/build-config.sh`
 - Output directory：專案根目錄
 - Environment variables：
-  - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
+  - `PUBLIC_SUPABASE_URL`
+  - `PUBLIC_SUPABASE_ANON_KEY`
 
 本專案也已內建：
 

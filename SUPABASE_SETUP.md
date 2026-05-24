@@ -137,8 +137,8 @@ http://localhost:5173
 - Build command：`sh scripts/build-config.sh`
 - Output directory：專案根目錄
 - Environment variables：
-  - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
+  - `PUBLIC_SUPABASE_URL`
+  - `PUBLIC_SUPABASE_ANON_KEY`
 
 部署完成後，到 Supabase Dashboard 的 Authentication > URL Configuration：
 

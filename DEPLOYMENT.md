@@ -26,8 +26,8 @@ sh scripts/build-config.sh
 請在 Vercel 專案設定加入：
 
 ```text
-SUPABASE_URL=https://luverejlzrijjufkpgnv.supabase.co
-SUPABASE_ANON_KEY=貼上 Supabase anon public key
+PUBLIC_SUPABASE_URL=https://luverejlzrijjufkpgnv.supabase.co
+PUBLIC_SUPABASE_ANON_KEY=貼上 Supabase anon public key
 ```
 
 不要使用 Supabase `service_role` key。

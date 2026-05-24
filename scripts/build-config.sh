@@ -6,14 +6,17 @@ if [ -f supabase-config.js ] && [ -z "${VERCEL:-}" ] && [ -z "${NETLIFY:-}" ] &&
   exit 0
 fi
 
-if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
-  echo "SUPABASE_URL and SUPABASE_ANON_KEY are required for deployment." >&2
+SUPABASE_PUBLIC_URL="${PUBLIC_SUPABASE_URL:-${SUPABASE_URL:-}}"
+SUPABASE_PUBLIC_ANON_KEY="${PUBLIC_SUPABASE_ANON_KEY:-${SUPABASE_ANON_KEY:-}}"
+
+if [ -z "${SUPABASE_PUBLIC_URL}" ] || [ -z "${SUPABASE_PUBLIC_ANON_KEY}" ]; then
+  echo "PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY are required for deployment." >&2
   exit 1
 fi
 
 cat > supabase-config.js <<EOF
 export default {
-  url: "${SUPABASE_URL}",
-  anonKey: "${SUPABASE_ANON_KEY}"
+  url: "${SUPABASE_PUBLIC_URL}",
+  anonKey: "${SUPABASE_PUBLIC_ANON_KEY}"
 };
 EOF
