@@ -260,7 +260,7 @@ async function loadCloudData() {
       transactions: cloudTransactions,
       dividends: cloudDividends
     };
-    mergePendingCloudWrites(localStateBeforeCloudLoad);
+    mergeLocalRecordsMissingFromCloud(localStateBeforeCloudLoad);
 
     ensureKnownSecurityMetadata();
     if (!cloudTransactions.length && !cloudDividends.length) {
@@ -279,12 +279,25 @@ async function loadCloudData() {
   }
 }
 
-function mergePendingCloudWrites(localState = null) {
+function mergeLocalRecordsMissingFromCloud(localState = null) {
+  mergeLocalSecurities(localState?.securities || []);
   for (const transaction of localState?.transactions || []) {
-    if (transaction._pendingCloudSync && !hasRecord(state.transactions, transaction, transactionFingerprint)) state.transactions.unshift(transaction);
+    if (isSyncableLocalRecord(transaction) && !hasRecord(state.transactions, transaction, transactionFingerprint)) {
+      transaction._pendingCloudSync = true;
+      state.transactions.unshift(transaction);
+    }
   }
   for (const dividend of localState?.dividends || []) {
-    if (dividend._pendingCloudSync && !hasRecord(state.dividends, dividend, dividendFingerprint)) state.dividends.unshift(dividend);
+    if (isSyncableLocalRecord(dividend) && !hasRecord(state.dividends, dividend, dividendFingerprint)) {
+      dividend._pendingCloudSync = true;
+      state.dividends.unshift(dividend);
+    }
+  }
+  for (const transaction of localState?.transactions || []) {
+    if (isSyncableLocalRecord(transaction) && transaction._pendingCloudSync && !hasRecord(state.transactions, transaction, transactionFingerprint)) state.transactions.unshift(transaction);
+  }
+  for (const dividend of localState?.dividends || []) {
+    if (isSyncableLocalRecord(dividend) && dividend._pendingCloudSync && !hasRecord(state.dividends, dividend, dividendFingerprint)) state.dividends.unshift(dividend);
   }
   for (const transaction of pendingCloudWrites.transactions.values()) {
     if (!hasRecord(state.transactions, transaction, transactionFingerprint)) state.transactions.unshift(transaction);
@@ -296,6 +309,17 @@ function mergePendingCloudWrites(localState = null) {
   state.dividends = dedupeRecords(state.dividends, dividendFingerprint);
   state.transactions.sort((a, b) => b.date.localeCompare(a.date));
   state.dividends.sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+}
+
+function isSyncableLocalRecord(record) {
+  return isUuid(record?.id) && isUuid(record?.accountId);
+}
+
+function mergeLocalSecurities(localSecurities) {
+  for (const security of localSecurities) {
+    const exists = state.securities.some((item) => item.ticker.toUpperCase() === security.ticker.toUpperCase() && item.market === security.market);
+    if (!exists) state.securities.push(security);
+  }
 }
 
 function hasRecord(collection, record, fingerprint) {
