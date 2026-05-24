@@ -47,6 +47,7 @@ let editingEntry = null;
 let supabaseClient = null;
 let supabaseConfig = null;
 let currentUser = null;
+let hasAutoRefreshedPrices = false;
 let pendingPasswordSetupType = "";
 let cloudContext = {
   householdId: null,
@@ -263,6 +264,7 @@ async function loadCloudData() {
     cloudContext.syncStatus = "synced";
     cloudContext.lastError = "";
     render();
+    autoRefreshLatestPrices();
   } catch (error) {
     cloudContext.syncStatus = "error";
     cloudContext.lastError = error.message;
@@ -492,7 +494,7 @@ function applyPriceUpdates(prices) {
 
 async function refreshLatestPrices() {
   const button = document.querySelector("#refresh-prices-button");
-  const originalText = button.textContent;
+  const originalText = button?.textContent || "更新收盤價";
   const symbols = symbolsForPriceRefresh();
   if (!symbols.length) return;
   if (!supabaseClient || !currentUser || !supabaseConfig?.url || !supabaseConfig?.anonKey) {
@@ -500,8 +502,10 @@ async function refreshLatestPrices() {
     return;
   }
 
-  button.disabled = true;
-  button.textContent = "更新中...";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "更新中...";
+  }
   try {
     const { data: sessionData } = await supabaseClient.auth.getSession();
     const accessToken = sessionData?.session?.access_token;
@@ -516,8 +520,8 @@ async function refreshLatestPrices() {
       },
       body: JSON.stringify({ symbols })
     });
-    if (!response.ok) throw new Error(`價格 API 回應 ${response.status}`);
     const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || `價格 API 回應 ${response.status}`);
     const updatedCount = applyPriceUpdates(payload.prices || []);
     const missing = (payload.prices || []).filter((price) => price.status !== "actual");
     saveState();
@@ -532,9 +536,24 @@ async function refreshLatestPrices() {
   } catch (error) {
     document.querySelector("#auth-message").textContent = `收盤價更新失敗：${error.message}`;
   } finally {
-    button.disabled = false;
-    button.textContent = originalText;
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
   }
+}
+
+function shouldAutoRefreshPrices() {
+  return calculateHoldings().some((holding) => {
+    const latestPrice = Number(holding.security?.latestPrice || 0);
+    return currentUser && cloudContext.syncStatus === "synced" && !hasAutoRefreshedPrices && holding.quantity > 0 && holding.market === "TW" && latestPrice === 0;
+  });
+}
+
+async function autoRefreshLatestPrices() {
+  if (!shouldAutoRefreshPrices()) return;
+  hasAutoRefreshedPrices = true;
+  await refreshLatestPrices();
 }
 
 async function migrateLocalRecordsToCloud(localState) {
@@ -1242,8 +1261,10 @@ async function initSupabase() {
     supabaseClient.auth.onAuthStateChange((_event, session) => {
       currentUser = session?.user || null;
       if (currentUser && !pendingPasswordSetupType) {
+        hasAutoRefreshedPrices = false;
         loadCloudData();
       } else if (!currentUser) {
+        hasAutoRefreshedPrices = false;
         cloudContext = { householdId: null, syncStatus: "local", lastError: "" };
       }
       renderSupabaseStatus();
@@ -1307,6 +1328,7 @@ async function signIn() {
   }
   document.querySelector("#auth-message").textContent = "登入成功。";
   renderSupabaseStatus();
+  hasAutoRefreshedPrices = false;
   await loadCloudData();
 }
 
