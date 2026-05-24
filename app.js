@@ -365,6 +365,21 @@ async function syncDividendToCloud(dividend) {
   if (error) throw error;
 }
 
+async function syncPriceSnapshotToCloud(price) {
+  if (!supabaseClient || !currentUser || !cloudContext.householdId || price.status !== "actual") return;
+  const securityId = await ensureCloudSecurity(price.ticker, price.market);
+  const { error } = await supabaseClient.from("price_snapshots").upsert({
+    household_id: cloudContext.householdId,
+    security_id: securityId,
+    price_date: price.priceDate,
+    close_price: price.price,
+    currency: price.currency || (price.market === "US" ? "USD" : "TWD"),
+    source: price.source || "manual",
+    value_status: "actual"
+  }, { onConflict: "household_id,security_id,price_date,source" }).select("id").single();
+  if (error) throw error;
+}
+
 async function softDeleteCloudRecord(tableName, id) {
   if (!supabaseClient || !currentUser || !cloudContext.householdId || !isUuid(id)) return;
   const { error } = await supabaseClient
@@ -420,6 +435,75 @@ async function syncFeeSettingsToCloud() {
       });
       if (error) throw error;
     }
+  }
+}
+
+function symbolsForPriceRefresh() {
+  const activeTickers = new Set(calculateHoldings().filter((holding) => holding.quantity > 0).map((holding) => `${holding.ticker}:${holding.market}`));
+  if (activeTickers.size) return Array.from(activeTickers);
+  return state.securities.map((security) => `${security.ticker}:${security.market || "TW"}`);
+}
+
+function applyPriceUpdates(prices) {
+  let latestDate = state.settings.latestPriceDate;
+  let updatedCount = 0;
+  for (const price of prices) {
+    if (price.status !== "actual" || !price.priceDate || !Number(price.price)) continue;
+    let security = state.securities.find((item) => item.ticker.toUpperCase() === price.ticker.toUpperCase() && item.market === price.market);
+    if (!security) {
+      const known = knownSecurityFor(price.ticker);
+      security = {
+        ticker: price.ticker,
+        name: known?.name || price.ticker,
+        market: price.market,
+        currency: price.currency || known?.currency || (price.market === "US" ? "USD" : "TWD"),
+        type: known?.type || "股票",
+        latestPrice: 0,
+        priceDate: price.priceDate
+      };
+      state.securities.push(security);
+    }
+    security.latestPrice = Number(price.price);
+    security.priceDate = price.priceDate;
+    security.currency = price.currency || security.currency;
+    if (price.priceDate > latestDate) latestDate = price.priceDate;
+    updatedCount += 1;
+  }
+  state.settings.latestPriceDate = latestDate;
+  return updatedCount;
+}
+
+async function refreshLatestPrices() {
+  const button = document.querySelector("#refresh-prices-button");
+  const originalText = button.textContent;
+  const symbols = symbolsForPriceRefresh();
+  if (!symbols.length) return;
+
+  button.disabled = true;
+  button.textContent = "更新中...";
+  try {
+    const response = await fetch(`/api/latest-prices?symbols=${encodeURIComponent(symbols.join(","))}`);
+    if (!response.ok) throw new Error(`價格 API 回應 ${response.status}`);
+    const payload = await response.json();
+    const updatedCount = applyPriceUpdates(payload.prices || []);
+    const missing = (payload.prices || []).filter((price) => price.status !== "actual");
+    saveState();
+
+    if (supabaseClient && currentUser && cloudContext.householdId) {
+      await Promise.all((payload.prices || []).map(syncPriceSnapshotToCloud));
+      cloudContext.syncStatus = "synced";
+      cloudContext.lastError = "";
+    }
+
+    const suffix = missing.length ? `；${missing.length} 個標的尚未支援自動更新` : "";
+    const message = updatedCount ? `已更新 ${updatedCount} 個收盤價${suffix}。` : `沒有可更新的收盤價${suffix}。`;
+    render();
+    document.querySelector("#auth-message").textContent = message;
+  } catch (error) {
+    document.querySelector("#auth-message").textContent = `收盤價更新失敗：${error.message}`;
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
   }
 }
 
@@ -1059,6 +1143,7 @@ function bindEvents() {
   });
 
   document.querySelector("#open-entry").addEventListener("click", openNewEntryDialog);
+  document.querySelector("#refresh-prices-button").addEventListener("click", refreshLatestPrices);
   document.querySelector("#export-button").addEventListener("click", exportJson);
   document.querySelector("#save-entry").addEventListener("click", saveEntry);
   document.querySelector("#delete-entry").addEventListener("click", deleteEditingEntry);

@@ -1,4 +1,4 @@
-const cacheName = "family-portfolio-dashboard-v5";
+const cacheName = "family-portfolio-dashboard-v6";
 const assets = [
   "./",
   "./index.html",
@@ -24,6 +24,10 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
   const shouldUseNetworkFirst = [
     "/",
     "/index.html",
