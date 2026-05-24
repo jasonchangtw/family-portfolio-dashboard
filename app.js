@@ -260,7 +260,7 @@ async function loadCloudData() {
       transactions: cloudTransactions,
       dividends: cloudDividends
     };
-    mergeLocalRecordsMissingFromCloud(localStateBeforeCloudLoad);
+    mergePendingCloudWrites(localStateBeforeCloudLoad);
 
     ensureKnownSecurityMetadata();
     if (!cloudTransactions.length && !cloudDividends.length) {
@@ -279,20 +279,7 @@ async function loadCloudData() {
   }
 }
 
-function mergeLocalRecordsMissingFromCloud(localState = null) {
-  mergeLocalSecurities(localState?.securities || []);
-  for (const transaction of localState?.transactions || []) {
-    if (isSyncableLocalRecord(transaction) && !hasRecord(state.transactions, transaction, transactionFingerprint)) {
-      transaction._pendingCloudSync = true;
-      state.transactions.unshift(transaction);
-    }
-  }
-  for (const dividend of localState?.dividends || []) {
-    if (isSyncableLocalRecord(dividend) && !hasRecord(state.dividends, dividend, dividendFingerprint)) {
-      dividend._pendingCloudSync = true;
-      state.dividends.unshift(dividend);
-    }
-  }
+function mergePendingCloudWrites(localState = null) {
   for (const transaction of localState?.transactions || []) {
     if (isSyncableLocalRecord(transaction) && transaction._pendingCloudSync && !hasRecord(state.transactions, transaction, transactionFingerprint)) state.transactions.unshift(transaction);
   }
@@ -313,13 +300,6 @@ function mergeLocalRecordsMissingFromCloud(localState = null) {
 
 function isSyncableLocalRecord(record) {
   return isUuid(record?.id) && isUuid(record?.accountId);
-}
-
-function mergeLocalSecurities(localSecurities) {
-  for (const security of localSecurities) {
-    const exists = state.securities.some((item) => item.ticker.toUpperCase() === security.ticker.toUpperCase() && item.market === security.market);
-    if (!exists) state.securities.push(security);
-  }
 }
 
 function hasRecord(collection, record, fingerprint) {
@@ -1079,67 +1059,70 @@ async function saveEntry() {
   if (isSavingEntry) return;
   isSavingEntry = true;
   document.querySelector("#save-entry").disabled = true;
-  const data = readEntryForm();
-  const ticker = data.ticker.trim().toUpperCase();
-  if (!ticker || !data.date || !data.accountId) {
+  try {
+    const data = readEntryForm();
+    const ticker = data.ticker.trim().toUpperCase();
+    if (!ticker || !data.date || !data.accountId) return;
+    const { kind, entry } = buildEntryFromForm(data, ticker);
+
+    if (supabaseClient && currentUser) {
+      cloudContext.syncStatus = "syncing";
+      renderSupabaseStatus();
+      if (kind === "transaction") await syncTransactionToCloud(entry);
+      if (kind === "dividend") await syncDividendToCloud(entry);
+      cloudContext.syncStatus = "synced";
+      cloudContext.lastError = "";
+      closeEntryDialog();
+      await loadCloudData();
+      return;
+    }
+
+    ensureLocalSecurityFromEntry(data, ticker);
+    applyLocalEntry(kind, entry);
+    saveState();
+    closeEntryDialog();
+    render();
+  } catch (error) {
+    cloudContext.syncStatus = "error";
+    cloudContext.lastError = error.message;
+    renderSupabaseStatus();
+    document.querySelector("#entry-summary").innerHTML = `<strong>儲存失敗</strong><span>${error.message}</span>`;
+  } finally {
     isSavingEntry = false;
     document.querySelector("#save-entry").disabled = false;
-    return;
   }
-  const security = securityFor(ticker);
-  let savedEntry = null;
-  let savedEntryKind = "";
-  if (!security) {
-    const known = knownSecurityFor(ticker);
-    state.securities.push({
-      ticker,
-      name: known?.name || ticker,
-      market: known?.market || data.market || "TW",
-      currency: known?.currency || (data.market === "US" ? "USD" : "TWD"),
-      type: known?.type || "股票",
-      latestPrice: Number(data.price || 0),
-      priceDate: state.settings.latestPriceDate
-    });
-  } else {
-    const known = knownSecurityFor(ticker);
-    if (known && (security.name === ticker || !security.name)) {
-      security.name = known.name;
-      security.market = security.market || known.market;
-      security.currency = security.currency || known.currency;
-      security.type = security.type || known.type;
-    }
-  }
+}
 
+function buildEntryFromForm(data, ticker) {
   if (entryType === "dividend") {
     const found = securityFor(ticker);
-    const dividend = {
-      id: editingEntry?.kind === "dividend" ? editingEntry.id : crypto.randomUUID(),
-      paymentDate: data.date,
-      accountId: data.accountId,
-      ticker,
-      type: data.dividendType,
-      grossAmount: Number(data.netAmount || 0) + Number(data.tax || 0) + Number(data.otherFee || 0),
-      withholdingTax: Number(data.tax || 0),
-      otherDeductions: Number(data.otherFee || 0),
-      netAmount: Number(data.netAmount || 0),
-      currency: found?.currency || "TWD",
-      fxRate: Number(data.fxRate || (found?.market === "US" ? state.settings.usdTwdRate : 1)),
-      status: data.fxRate ? "actual" : "estimated",
-      note: data.note || ""
+    return {
+      kind: "dividend",
+      entry: {
+        id: editingEntry?.kind === "dividend" ? editingEntry.id : crypto.randomUUID(),
+        paymentDate: data.date,
+        accountId: data.accountId,
+        ticker,
+        type: data.dividendType,
+        grossAmount: Number(data.netAmount || 0) + Number(data.tax || 0) + Number(data.otherFee || 0),
+        withholdingTax: Number(data.tax || 0),
+        otherDeductions: Number(data.otherFee || 0),
+        netAmount: Number(data.netAmount || 0),
+        currency: found?.currency || "TWD",
+        fxRate: Number(data.fxRate || (found?.market === "US" ? state.settings.usdTwdRate : 1)),
+        status: data.fxRate ? "actual" : "estimated",
+        note: data.note || ""
+      }
     };
-    if (editingEntry?.kind === "dividend") {
-      state.dividends = state.dividends.map((item) => item.id === editingEntry.id ? dividend : item);
-    } else {
-      state.dividends.unshift(dividend);
-    }
-    savedEntry = dividend;
-    savedEntryKind = "dividend";
-  } else {
-    const market = data.market || securityFor(ticker)?.market || "TW";
-    const quantity = Number(data.quantity || 0);
-    const price = Number(data.price || 0);
-    const gross = quantity * price;
-    const transaction = {
+  }
+
+  const market = data.market || securityFor(ticker)?.market || "TW";
+  const quantity = Number(data.quantity || 0);
+  const price = Number(data.price || 0);
+  const gross = quantity * price;
+  return {
+    kind: "transaction",
+    entry: {
       id: editingEntry?.kind === "transaction" ? editingEntry.id : crypto.randomUUID(),
       date: data.date,
       type: entryType,
@@ -1155,43 +1138,46 @@ async function saveEntry() {
       actualTwdAmount: Number(data.actualTwdAmount || 0),
       status: data.commission || data.fxRate ? "actual" : "estimated",
       note: data.note || ""
-    };
-    if (editingEntry?.kind === "transaction") {
-      state.transactions = state.transactions.map((item) => item.id === editingEntry.id ? transaction : item);
-    } else {
-      const existingDuplicate = state.transactions.find((item) => transactionFingerprint(item) === transactionFingerprint(transaction));
-      if (existingDuplicate) transaction.id = existingDuplicate.id;
-      else state.transactions.unshift(transaction);
     }
-    savedEntry = transaction;
-    savedEntryKind = "transaction";
+  };
+}
+
+function ensureLocalSecurityFromEntry(data, ticker) {
+  const security = securityFor(ticker);
+  const known = knownSecurityFor(ticker);
+  if (!security) {
+    state.securities.push({
+      ticker,
+      name: known?.name || ticker,
+      market: known?.market || data.market || "TW",
+      currency: known?.currency || (data.market === "US" ? "USD" : "TWD"),
+      type: known?.type || "股票",
+      latestPrice: Number(data.price || 0),
+      priceDate: state.settings.latestPriceDate
+    });
+    return;
   }
-  if (supabaseClient && currentUser) {
-    rememberPendingCloudWrite(savedEntryKind, savedEntry);
+  if (known && (security.name === ticker || !security.name)) {
+    security.name = known.name;
+    security.market = security.market || known.market;
+    security.currency = security.currency || known.currency;
+    security.type = security.type || known.type;
   }
-  saveState();
-  if (supabaseClient && currentUser) {
-    try {
-      cloudContext.syncStatus = "syncing";
-      renderSupabaseStatus();
-      if (savedEntryKind === "transaction") await syncTransactionToCloud(savedEntry);
-      if (savedEntryKind === "dividend") await syncDividendToCloud(savedEntry);
-      forgetPendingCloudWrite(savedEntryKind, savedEntry.id);
-      saveState();
-      cloudContext.syncStatus = "synced";
-      cloudContext.lastError = "";
-    } catch (error) {
-      cloudContext.syncStatus = "error";
-      cloudContext.lastError = error.message;
-    }
+}
+
+function applyLocalEntry(kind, entry) {
+  if (kind === "dividend") {
+    if (editingEntry?.kind === "dividend") state.dividends = state.dividends.map((item) => item.id === editingEntry.id ? entry : item);
+    else state.dividends.unshift(entry);
+    return;
   }
-  document.querySelector("#entry-dialog").close();
-  document.querySelector("#entry-form").reset();
-  editingEntry = null;
-  updateEntryDialogState();
-  render();
-  isSavingEntry = false;
-  document.querySelector("#save-entry").disabled = false;
+  if (editingEntry?.kind === "transaction") {
+    state.transactions = state.transactions.map((item) => item.id === editingEntry.id ? entry : item);
+    return;
+  }
+  const existingDuplicate = state.transactions.find((item) => transactionFingerprint(item) === transactionFingerprint(entry));
+  if (existingDuplicate) entry.id = existingDuplicate.id;
+  else state.transactions.unshift(entry);
 }
 
 function exportJson() {
@@ -1279,19 +1265,25 @@ async function deleteTransaction(id) {
   if (!transaction) return false;
   const confirmed = window.confirm(`刪除 ${transaction.date} ${transaction.ticker} 的${transaction.type === "buy" ? "買入" : "賣出"}紀錄？`);
   if (!confirmed) return false;
-  state.transactions = state.transactions.filter((item) => item.id !== id);
-  saveState();
   if (supabaseClient && currentUser) {
     try {
+      cloudContext.syncStatus = "syncing";
+      renderSupabaseStatus();
       await softDeleteCloudRecord("transactions", id);
       cloudContext.syncStatus = "synced";
       cloudContext.lastError = "";
+      await loadCloudData();
     } catch (error) {
       cloudContext.syncStatus = "error";
       cloudContext.lastError = error.message;
+      renderSupabaseStatus();
+      return false;
     }
+  } else {
+    state.transactions = state.transactions.filter((item) => item.id !== id);
+    saveState();
+    render();
   }
-  render();
   return true;
 }
 
@@ -1300,19 +1292,25 @@ async function deleteDividend(id) {
   if (!dividend) return false;
   const confirmed = window.confirm(`刪除 ${dividend.paymentDate} ${dividend.ticker} 的配息紀錄？`);
   if (!confirmed) return false;
-  state.dividends = state.dividends.filter((item) => item.id !== id);
-  saveState();
   if (supabaseClient && currentUser) {
     try {
+      cloudContext.syncStatus = "syncing";
+      renderSupabaseStatus();
       await softDeleteCloudRecord("dividends", id);
       cloudContext.syncStatus = "synced";
       cloudContext.lastError = "";
+      await loadCloudData();
     } catch (error) {
       cloudContext.syncStatus = "error";
       cloudContext.lastError = error.message;
+      renderSupabaseStatus();
+      return false;
     }
+  } else {
+    state.dividends = state.dividends.filter((item) => item.id !== id);
+    saveState();
+    render();
   }
-  render();
   return true;
 }
 

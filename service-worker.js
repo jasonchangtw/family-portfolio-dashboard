@@ -1,4 +1,4 @@
-const cacheName = "family-portfolio-dashboard-v11";
+const cacheName = "family-portfolio-dashboard-v12";
 const assets = [
   "./",
   "./index.html",
